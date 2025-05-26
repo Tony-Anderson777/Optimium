@@ -17,9 +17,9 @@ public class AddScriptToChildren
                     Debug.Log($"Exclusion: {child.name}");
                     continue;
                 }
-                if (child.GetComponent<Cube_Color>() == null)
+                if (child.GetComponent<CubeColor>() == null)
                 {
-                    child.gameObject.AddComponent<Cube_Color>();
+                    child.gameObject.AddComponent<CubeColor>();
                     Debug.Log($"Script ajouté à: {child.name}");
                 }
             }

@@ -2,7 +2,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using System.IO;
 
-public class Cube_Color : MonoBehaviour
+public class CubeColor : MonoBehaviour
 {
     private Color neutralRatioColor;
     private Color bordeauRatioColor;

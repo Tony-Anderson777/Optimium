@@ -1,0 +1,57 @@
+NomSalle;CapaciteSalle;LibelleTypeSalle
+E020 ;30;Salles banalisées
+E033A - Amphi 1;198;Auditorium
+E033B - Amphi 2;116;Auditorium
+N010 - Scale Up Projet 1;42;Scale Up
+N018 FISA;36;Salles banalisées
+N019A - Creativ;16;Salles techniques (FABLAB, créativité,...)
+N019B - Creativ;16;Salles techniques (FABLAB, créativité,...)
+N101A FISA;24;Salles banalisées
+N102 CPI A1;36;Scale Up
+N103B FISA;24;Salles banalisées
+N104A CPI A1;24;Scale Up
+N104B CPI A1;24;Scale Up
+N106 Box;14;Boxes
+N107 Box;8;Boxes
+N108 Box;18;Boxes
+N111 Scale Up;30;Scale Up
+N201 Box;12;Boxes
+N202 Box;16;Boxes
+N203 Box;14;Boxes
+N204 Scale Up;36;Scale Up
+N205 Scale Up;36;Scale Up
+N206 Scale Up CPI A2;36;Scale Up
+N207 Scale Up CPI A2;36;Scale Up
+N208 Scale Up  CPIA2 INFO;36;Scale Up
+N211 Box;12;Boxes
+N212A Scale Up;24;Scale Up
+N212B Scale Up;24;Scale Up
+N214A;24;Salles banalisées
+N214B;24;Salles banalisées
+N215 Scale Up;36;Scale Up
+N216 Scale Up;36;Scale Up
+N217 Info;24;Salles informatique
+N218 Scale Up;24;Scale Up
+N219 Info;30;Salles informatique
+N220 Info;30;Salles informatique
+N221 Info;24;Salles informatique
+N230 Info;24;Salles informatique
+N231 Info;18;Salles informatique
+OPIBUS;36;Scale Up
+S037 Box;16;Boxes
+S157 Box;12;Boxes
+S158;32;Salles banalisées
+S159 en ilots;30;Salles banalisées
+S160  EFM;22;Salles banalisées
+S161 en ilots;30;Salles banalisées
+S162  EFM;22;Salles banalisées
+S163 Box;12;Boxes
+S222 Info;24;Salles informatique
+S223 en ilots;24;Salles banalisées
+S224 Scale Up;24;Scale Up
+S225 Scale Up;24;Scale Up
+S226 ;28;Salles banalisées
+S227 ;24;Salles banalisées
+S228 ;28;Salles banalisées
+S229A ;30;Salles banalisées
+S229B ;30;Salles banalisées

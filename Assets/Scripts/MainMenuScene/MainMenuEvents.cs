@@ -27,7 +27,7 @@ public class MainMenuEvents : MonoBehaviour
 
     private void OnSelectFileClick(ClickEvent evt)
     {
-        DataSessionManager.instance.SetFile("Occupation des salles juillet 2025.xlsx");
+        DataSessionManager.instance.SetFile("Extraction salles du 14 au 18 avril 2025.xlsx");
     }
 
     private void OnGenerateMapClick(ClickEvent evt)
@@ -43,7 +43,7 @@ public class MainMenuEvents : MonoBehaviour
 
     private IEnumerator LoadSceneAndConvert()
     {
-        var asyncLoad = SceneManager.LoadSceneAsync("SampleScene");
+        var asyncLoad = SceneManager.LoadSceneAsync("SampleSceneLouis");
 
         while (!asyncLoad.isDone)
         {

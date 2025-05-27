@@ -9,6 +9,7 @@ public class MainMenuEvents : MonoBehaviour
     private Button _button_generate_map;
     private Button _button_select_file;
     private UIDocument _document;
+    public UIDocument uiDocument;
 
     private void Awake()
     {
@@ -32,6 +33,10 @@ public class MainMenuEvents : MonoBehaviour
         if (paths.Length > 0)
         {
             Debug.Log("Fichier sélectionné : " + paths[0]);
+
+            VisualElement root = uiDocument.rootVisualElement;
+            Label pathLabel = root.Q<Label>("Path");
+            pathLabel.text = paths[0];
         }
         DataSessionManager.instance.SetFile(paths[0]);
     }

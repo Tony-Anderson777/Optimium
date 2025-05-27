@@ -2,6 +2,7 @@ using UnityEngine.SceneManagement;
 using UnityEngine.UIElements;
 using System.Collections;
 using UnityEngine;
+using SFB;
 
 public class MainMenuEvents : MonoBehaviour
 {
@@ -27,7 +28,12 @@ public class MainMenuEvents : MonoBehaviour
 
     private void OnSelectFileClick(ClickEvent evt)
     {
-        DataSessionManager.instance.SetFile("Extraction salles du 14 au 18 avril 2025.xlsx");
+        var paths = StandaloneFileBrowser.OpenFilePanel("Select File", "", "", false);
+        if (paths.Length > 0)
+        {
+            Debug.Log("Fichier sélectionné : " + paths[0]);
+        }
+        DataSessionManager.instance.SetFile(paths[0]);
     }
 
     private void OnGenerateMapClick(ClickEvent evt)

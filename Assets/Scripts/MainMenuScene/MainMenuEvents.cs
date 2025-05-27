@@ -29,7 +29,11 @@ public class MainMenuEvents : MonoBehaviour
 
     private void OnSelectFileClick(ClickEvent evt)
     {
-        var paths = StandaloneFileBrowser.OpenFilePanel("Select File", "", "", false);
+        var extensions = new[] {
+            new ExtensionFilter("Excel Files", "xls", "xlsx"),
+            new ExtensionFilter("All Files", "*"),
+        };
+        var paths = StandaloneFileBrowser.OpenFilePanel("Select File", "", extensions, false);
         if (paths.Length > 0)
         {
             Debug.Log("Fichier sélectionné : " + paths[0]);

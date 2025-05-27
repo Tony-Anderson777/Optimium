@@ -2,7 +2,7 @@ using UnityEngine;
 using System.IO;
 
 public class ExcelConversionTrigger {
-    private string excelFileName = "Extraction salles du 14 au 18 avril 2025.xlsx";
+    private string excelFileName;
     private string csvFileName = "ConvertedData.csv";
     private int worksheetToConvert = 1;
 

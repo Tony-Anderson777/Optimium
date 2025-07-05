@@ -25,7 +25,7 @@ import numpy as np
 from datetime import datetime, timedelta
 
 st.set_page_config(
-    page_title="Optimisation Réservations Salles",
+    page_title="Optimium l'appli d'optimisation  des réservations de salles du CESI",
     page_icon="🏠",
     layout="wide"
 )
@@ -43,7 +43,8 @@ COL_CAPACITE = "CapaciteSalle"
 
 # Colonnes réservations
 COL_NB_INSCRITS = "NombreInscrit"
-COL_SALLE_OLD = "NomAncienneSalle"
+COL_SALLE_OLD = "NomSalle"  # Colonne source pour l'ancienne salle
+COL_NOM_ANCIENNE_SALLE = "NomAncienneSalle"  # Colonne à créer
 COL_DATE = "Date"
 COL_HEURE_DEBUT = "Début"
 COL_HEURE_FIN = "Fin"
@@ -61,12 +62,12 @@ COL_DUPLICATA = "EstDuplicata"  # Nouvelle colonne pour marquer les doublons
 # ── PARAMÈTRES PAR DÉFAUT ───────────────────────────────────────────
 SEUIL_BON_DEFAULT = 0.85   # 85%
 SEUIL_BAS_DEFAULT = 0.3    # 30%
-BUFFER_DEFAULT = 15        # 15 minutes
+BUFFER_DEFAULT = 0         # 0 minutes (au lieu de 15)
 
 # ── TRADUCTIONS ─────────────────────────────────────────────────────
 LANGS = {
     "fr": {
-        "titre": "🎓 Optimisation des réservations de salles",
+        "titre": "🎓 Optimium l'appli d'optimisation  des réservations de salles du CESI",
         "description": "Algorithme intelligent d'affectation optimale des salles avec gestion des doublons",
         "salles_chargees": "✅ {n} salles chargées",
         "seuil_bon": "Seuil optimal d'occupation (%)",
@@ -101,7 +102,7 @@ LANGS = {
         "inscrits_corriges": "👥 Inscrits corrigés (sans doublons)"
     },
     "en": {
-        "titre": "🎓 Room Booking Optimization",
+        "titre": "🎓 Optimium, CESI's room reservation optimization application",
         "description": "Smart algorithm for optimal room assignment with duplicate handling",
         "salles_chargees": "✅ {n} rooms loaded",
         "seuil_bon": "Optimal occupation threshold (%)",
@@ -138,6 +139,17 @@ LANGS = {
 }
 
 # ── FONCTIONS UTILITAIRES ───────────────────────────────────────────
+def normaliser_nom_salle(nom: str) -> str:
+    """Normalise le nom d'une salle pour la correspondance."""
+    if pd.isna(nom) or nom == "":
+        return ""
+    nom_clean = str(nom).strip().upper()
+    # Supprimer les caractères spéciaux et espaces multiples
+    import re
+    nom_clean = re.sub(r'[^\w\s]', '', nom_clean)
+    nom_clean = re.sub(r'\s+', ' ', nom_clean).strip()
+    return nom_clean
+
 def salle_libre(planning: List[Tuple], start: datetime, end: datetime, buffer_min: int = 0) -> bool:
     """Vérifie si une salle est libre pour un créneau donné avec buffer."""
     if not planning:
@@ -190,38 +202,20 @@ def calculer_score_fitness(individu: List[str], df_resa: pd.DataFrame,
 
 # ── DÉTECTION DES DOUBLONS ──────────────────────────────────────────
 def detecter_doublons(df_resa: pd.DataFrame) -> pd.DataFrame:
-    """Identifie les réservations simultanées par CodeAnalytique."""
+    """Identifie les réservations exactement identiques (même CodeAnalytique, Date, Heure, Inscrits)."""
     df = df_resa.copy()
-    
-    df[COL_DEB] = pd.to_datetime(
-        df[COL_DATE].astype(str) + " " + df[COL_HEURE_DEBUT].astype(str),
-        dayfirst=True, errors="coerce"
-    )
-    df[COL_FIN] = pd.to_datetime(
-        df[COL_DATE].astype(str) + " " + df[COL_HEURE_FIN].astype(str),
-        dayfirst=True, errors="coerce"
-    )
     
     df[COL_DUPLICATA] = False
     
-    # Regrouper par CodeAnalytique et Date pour détecter les chevauchements
-    grouped = df.groupby([COL_CODE_ANALYTIQUE, COL_DATE])
+    # Regrouper par CodeAnalytique, Date, Heure de début, Heure de fin et Nombre d'inscrits
+    grouped = df.groupby([COL_CODE_ANALYTIQUE, COL_DATE, COL_HEURE_DEBUT, COL_HEURE_FIN, COL_NB_INSCRITS])
     
-    for (code, date), group in grouped:
-        if len(group) > 1:  # Plus d'une réservation pour ce CodeAnalytique à cette date
-            for i, row1 in group.iterrows():
-                for j, row2 in group.iterrows():
-                    if i >= j:
-                        continue
-                    start1, end1 = row1[COL_DEB], row1[COL_FIN]
-                    start2, end2 = row2[COL_DEB], row2[COL_FIN]
-                    
-                    if start1 <= end2 and start2 <= end1:  # Chevauchement
-                        # Marquer les réservations avec moins d'inscrits comme doublons
-                        if row1[COL_NB_INSCRITS] >= row2[COL_NB_INSCRITS]:
-                            df.loc[row2.name, COL_DUPLICATA] = True
-                        else:
-                            df.loc[row1.name, COL_DUPLICATA] = True
+    for (code, date, debut, fin, inscrits), group in grouped:
+        if len(group) > 1:  # Plus d'une réservation identique
+            # Marquer toutes les doublons sauf la première
+            for i, (idx, row) in enumerate(group.iterrows()):
+                if i > 0:  # Garder la première, marquer les autres comme doublons
+                    df.loc[idx, COL_DUPLICATA] = True
     
     return df
 
@@ -254,6 +248,12 @@ def charger_salles(path: str) -> Optional[pd.DataFrame]:
             st.warning("⚠️ Capacités négatives détectées et supprimées")
             df = df[df[COL_CAPACITE] > 0]
         
+        # Gérer les doublons en gardant la capacité la plus élevée
+        df = df.sort_values(COL_CAPACITE, ascending=False).drop_duplicates(subset=[COL_NOM_SALLE], keep='first')
+        
+        logger.info(f"Salles chargées après nettoyage : {len(df)} lignes")
+        logger.info(f"Capacités uniques : {df[COL_CAPACITE].unique()}")
+        
         return df.sort_values(COL_CAPACITE).reset_index(drop=True)
         
     except Exception as e:
@@ -268,7 +268,21 @@ def optimiser_glouton(df_resa: pd.DataFrame, df_salles: pd.DataFrame,
     """Algorithme glouton intelligent avec gestion des doublons."""
     try:
         cap_lookup = dict(zip(df_salles[COL_NOM_SALLE], df_salles[COL_CAPACITE]))
-        df = detecter_doublons(df_resa)  # Détecter les doublons avant optimisation
+        # Créer un lookup normalisé pour la correspondance des salles
+        cap_lookup_normalise = {normaliser_nom_salle(nom): cap for nom, cap in cap_lookup.items()}
+        
+        # Debug: Vérifier les doublons dans le catalogue des salles
+        salles_dupliquees = df_salles[df_salles[COL_NOM_SALLE].duplicated(keep=False)]
+        if not salles_dupliquees.empty:
+            st.warning(f"⚠️ Salles dupliquées dans le catalogue: {salles_dupliquees[COL_NOM_SALLE].tolist()}")
+            st.dataframe(salles_dupliquees[[COL_NOM_SALLE, COL_CAPACITE]])
+        
+        # Debug: Afficher toutes les capacités pour S158
+        salles_s158 = df_salles[df_salles[COL_NOM_SALLE].str.contains('S158', case=False, na=False)]
+        if not salles_s158.empty:
+            st.info(f"🔍 Capacités trouvées pour S158: {salles_s158[[COL_NOM_SALLE, COL_CAPACITE]].to_dict('records')}")
+        
+        df = detecter_doublons(df_resa)
         
         if COL_CAPACITE in df.columns:
             df = df.drop(columns=[COL_CAPACITE])
@@ -308,8 +322,27 @@ def optimiser_glouton(df_resa: pd.DataFrame, df_salles: pd.DataFrame,
         for _, row in df_valid.iterrows():
             inscrits = row[COL_NB_INSCRITS]
             start, end = row[COL_DEB], row[COL_FIN]
-            old_room = str(row.get(COL_CODE_ANALYTIQUE, ""))
-            cap_old = cap_lookup.get(old_room, pd.NA)
+            
+            # Récupérer la salle actuellement assignée (ancienne salle)
+            old_room = str(row.get(COL_NOM_ANCIENNE_SALLE, "")).strip()
+            
+            # Normaliser le nom de la salle pour la correspondance
+            old_room_normalise = normaliser_nom_salle(old_room)
+            
+            # Debug: Afficher les informations de débogage seulement si problème
+            if old_room_normalise and old_room_normalise not in cap_lookup_normalise:
+                st.warning(f"⚠️ Salle '{old_room}' (normalisée: '{old_room_normalise}') non trouvée dans le catalogue")
+                st.info(f"Salles disponibles (normalisées): {list(cap_lookup_normalise.keys())[:5]}...")
+            elif old_room_normalise:
+                capacite_trouvee = cap_lookup_normalise.get(old_room_normalise, 'N/A')
+                st.success(f"✅ Salle '{old_room}' (normalisée: '{old_room_normalise}') trouvée avec capacité: {capacite_trouvee}")
+                
+                # Debug: Afficher toutes les entrées pour cette salle dans le catalogue
+                salles_correspondantes = df_salles[df_salles[COL_NOM_SALLE].str.contains(old_room, case=False, na=False)]
+                if len(salles_correspondantes) > 1:
+                    st.warning(f"⚠️ Plusieurs entrées trouvées pour '{old_room}': {salles_correspondantes[[COL_NOM_SALLE, COL_CAPACITE]].to_dict('records')}")
+            
+            cap_old = cap_lookup_normalise.get(old_room_normalise, pd.NA)
             
             best_room = None
             best_ratio = -1.0
@@ -357,6 +390,10 @@ def optimiser_glouton(df_resa: pd.DataFrame, df_salles: pd.DataFrame,
                 COL_CAPACITE_OLD: cap_old,
                 COL_RAISON_NA: raison
             })
+            
+            # S'assurer que la colonne NomAncienneSalle est présente
+            if COL_NOM_ANCIENNE_SALLE not in result_row:
+                result_row[COL_NOM_ANCIENNE_SALLE] = old_room
             results.append(result_row)
         
         df_final = pd.concat([
@@ -368,9 +405,16 @@ def optimiser_glouton(df_resa: pd.DataFrame, df_salles: pd.DataFrame,
                      inplace=True, errors="ignore")
         
         def reorganiser_colonnes(cols):
-            if COL_SALLE_OLD in cols and COL_CAPACITE_OLD in cols:
-                idx = cols.index(COL_SALLE_OLD) + 1
+            # Placer CapaciteAncienneSalle à côté de NomAncienneSalle
+            if COL_NOM_ANCIENNE_SALLE in cols and COL_CAPACITE_OLD in cols:
+                idx = cols.index(COL_NOM_ANCIENNE_SALLE) + 1
                 cols.insert(idx, cols.pop(cols.index(COL_CAPACITE_OLD)))
+            
+            # Placer CapaciteSalle à côté de NomSalle
+            if COL_SALLE_OPTIM in cols and COL_CAPACITE in cols:
+                idx = cols.index(COL_SALLE_OPTIM) + 1
+                cols.insert(idx, cols.pop(cols.index(COL_CAPACITE)))
+            
             return cols
         
         df_final = df_final[reorganiser_colonnes(list(df_final.columns))]
@@ -390,8 +434,10 @@ def optimiser_genetique(df_resa: pd.DataFrame, df_salles: pd.DataFrame,
     try:
         salles = list(df_salles[COL_NOM_SALLE])
         cap_lookup = dict(zip(df_salles[COL_NOM_SALLE], df_salles[COL_CAPACITE]))
+        # Créer un lookup normalisé pour la correspondance des salles
+        cap_lookup_normalise = {normaliser_nom_salle(nom): cap for nom, cap in cap_lookup.items()}
         
-        df = detecter_doublons(df_resa)  # Détecter les doublons avant optimisation
+        df = detecter_doublons(df_resa)
         df = df[df[COL_DUPLICATA] == False].copy()  # Exclure les doublons
         
         df[COL_NB_INSCRITS] = pd.to_numeric(df[COL_NB_INSCRITS], errors="coerce")
@@ -482,13 +528,23 @@ def optimiser_genetique(df_resa: pd.DataFrame, df_salles: pd.DataFrame,
                     else:
                         raison = pd.NA
             
+            # Récupérer la salle actuellement assignée (ancienne salle) pour l'algorithme génétique
+            old_room_genetic = str(row.get(COL_NOM_ANCIENNE_SALLE, "")).strip()
+            old_room_genetic_normalise = normaliser_nom_salle(old_room_genetic)
+            if old_room_genetic_normalise and old_room_genetic_normalise not in cap_lookup_normalise:
+                st.warning(f"⚠️ Algo génétique: Salle '{old_room_genetic}' (normalisée: '{old_room_genetic_normalise}') non trouvée")
+            
             row.update({
                 COL_SALLE_OPTIM: salle_finale,
                 COL_CAPACITE: cap,
                 COL_TAUX_OCCUP: taux,
-                COL_CAPACITE_OLD: cap_lookup.get(row.get(COL_SALLE_OLD, ""), pd.NA),
+                COL_CAPACITE_OLD: cap_lookup_normalise.get(old_room_genetic_normalise, pd.NA),
                 COL_RAISON_NA: raison
             })
+            
+            # S'assurer que la colonne NomAncienneSalle est présente
+            if COL_NOM_ANCIENNE_SALLE not in row:
+                row[COL_NOM_ANCIENNE_SALLE] = old_room_genetic
             results.append(row)
         
         progress_bar.empty()
@@ -566,6 +622,15 @@ def exporter_excel(df: pd.DataFrame, seuil_bon: float, seuil_bas: float) -> Byte
                     fill=PatternFill(start_color="FFEB9C", end_color="FFEB9C", fill_type="solid")
                 )
             )
+        
+        # Appliquer le format HH:MM aux colonnes d'heures
+        for col_heure in [COL_HEURE_DEBUT, COL_HEURE_FIN]:
+            if col_heure in df.columns:
+                col_heure_idx = df.columns.get_loc(col_heure) + 1
+                col_lettre_heure = get_column_letter(col_heure_idx)
+                for cell in ws[col_lettre_heure][1:]:
+                    if cell.value is not None:
+                        cell.number_format = "HH:MM"
     
     return buffer
 
@@ -604,6 +669,10 @@ def main():
     
     with st.sidebar:
         st.success(t["salles_chargees"].format(n=len(df_salles)))
+        
+        # Debug: Afficher les salles du catalogue
+        st.info(f"🏠 Salles du catalogue: {list(df_salles[COL_NOM_SALLE])}")
+        
         with st.expander("📋 Salles disponibles"):
             st.dataframe(df_salles, hide_index=True, use_container_width=True)
     
@@ -649,11 +718,12 @@ def main():
     
     try:
         df_resa = pd.read_excel(fichier_resa)
+        
     except Exception as e:
         st.error(f"❌ Erreur lecture fichier : {e}")
         return
     
-    colonnes_requises = [COL_DATE, COL_HEURE_DEBUT, COL_HEURE_FIN, COL_NB_INSCRITS, COL_CODE_ANALYTIQUE]
+    colonnes_requises = [COL_DATE, COL_HEURE_DEBUT, COL_HEURE_FIN, COL_NB_INSCRITS, COL_CODE_ANALYTIQUE, COL_SALLE_OLD]
     colonnes_manquantes = [col for col in colonnes_requises if col not in df_resa.columns]
     
     if colonnes_manquantes:
@@ -661,6 +731,78 @@ def main():
         return
     
     df_resa = detecter_doublons(df_resa)
+    
+    # Créer la colonne NomAncienneSalle à partir de NomSalle
+    if COL_SALLE_OLD in df_resa.columns:
+        df_resa[COL_NOM_ANCIENNE_SALLE] = df_resa[COL_SALLE_OLD]
+    
+    # Debug: Afficher les salles dans le fichier de réservations
+    if COL_NOM_ANCIENNE_SALLE in df_resa.columns:
+        salles_resa = df_resa[COL_NOM_ANCIENNE_SALLE].unique()
+        st.info(f"📋 Salles dans les réservations: {list(salles_resa)}")
+        
+        # Vérifier les correspondances avec normalisation
+        salles_catalogue = set(df_salles[COL_NOM_SALLE])
+        salles_catalogue_normalise = {normaliser_nom_salle(s) for s in salles_catalogue}
+        salles_resa_normalise = {normaliser_nom_salle(s) for s in salles_resa}
+        
+        # Créer un rapport de correspondance
+        st.subheader("🔍 Rapport de correspondance des salles")
+        
+        correspondances = []
+        for salle_resa in salles_resa:
+            salle_normalise = normaliser_nom_salle(salle_resa)
+            if salle_normalise in salles_catalogue_normalise:
+                # Trouver la salle originale dans le catalogue
+                salle_catalogue = None
+                for salle_cat in salles_catalogue:
+                    if normaliser_nom_salle(salle_cat) == salle_normalise:
+                        salle_catalogue = salle_cat
+                        break
+                capacite = df_salles[df_salles[COL_NOM_SALLE] == salle_catalogue][COL_CAPACITE].iloc[0] if salle_catalogue else "N/A"
+                correspondances.append({
+                    "Salle (réservations)": salle_resa,
+                    "Salle (catalogue)": salle_catalogue,
+                    "Capacité": capacite,
+                    "Statut": "✅ Correspondance"
+                })
+            else:
+                correspondances.append({
+                    "Salle (réservations)": salle_resa,
+                    "Salle (catalogue)": "Non trouvée",
+                    "Capacité": "N/A",
+                    "Statut": "❌ Non trouvée"
+                })
+        
+        df_correspondances = pd.DataFrame(correspondances)
+        st.dataframe(df_correspondances, use_container_width=True)
+        
+        # Afficher un rapport détaillé des capacités
+        st.subheader("📊 Rapport détaillé des capacités")
+        
+        capacites_detail = []
+        for salle_resa in salles_resa:
+            salle_normalise = normaliser_nom_salle(salle_resa)
+            salles_correspondantes = df_salles[df_salles[COL_NOM_SALLE].str.contains(salle_resa, case=False, na=False)]
+            
+            if not salles_correspondantes.empty:
+                for _, row in salles_correspondantes.iterrows():
+                    capacites_detail.append({
+                        "Salle (réservations)": salle_resa,
+                        "Salle (catalogue)": row[COL_NOM_SALLE],
+                        "Capacité": row[COL_CAPACITE],
+                        "Normalisée": salle_normalise
+                    })
+            else:
+                capacites_detail.append({
+                    "Salle (réservations)": salle_resa,
+                    "Salle (catalogue)": "Non trouvée",
+                    "Capacité": "N/A",
+                    "Normalisée": salle_normalise
+                })
+        
+        df_capacites = pd.DataFrame(capacites_detail)
+        st.dataframe(df_capacites, use_container_width=True)
     
     st.subheader(t["apercu_resa"])
     st.dataframe(df_resa.head(10), use_container_width=True)
@@ -857,14 +999,10 @@ def main():
     
     st.markdown("---")
     st.markdown(
-        "*Développé avec ❤️ par l'équipe d'optimisation - "
+        "Avec Optimium l'optimisation est à son maximum "
         f"Version 2.1 - {datetime.now().strftime('%Y')}*"
     )
-    nom_fichier = "outputs/resultat_optimisation.xlsx"
-buffer_excel = exporter_excel(df_optimise, seuil_bon, seuil_bas)
-with open(nom_fichier, "wb") as f:
-    f.write(buffer_excel.getbuffer())
-
+    
 
 if __name__ == "__main__":
     main()

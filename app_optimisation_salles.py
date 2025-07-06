@@ -319,6 +319,9 @@ def optimiser_glouton(df_resa: pd.DataFrame, df_salles: pd.DataFrame,
         plannings = {salle: [] for salle in df_salles[COL_NOM_SALLE]}
         results = []
         
+        # Collecter les messages de débogage
+        debug_messages = []
+        
         for _, row in df_valid.iterrows():
             inscrits = row[COL_NB_INSCRITS]
             start, end = row[COL_DEB], row[COL_FIN]
@@ -329,18 +332,17 @@ def optimiser_glouton(df_resa: pd.DataFrame, df_salles: pd.DataFrame,
             # Normaliser le nom de la salle pour la correspondance
             old_room_normalise = normaliser_nom_salle(old_room)
             
-            # Debug: Afficher les informations de débogage seulement si problème
+            # Collecter les messages de débogage au lieu de les afficher
             if old_room_normalise and old_room_normalise not in cap_lookup_normalise:
-                st.warning(f"⚠️ Salle '{old_room}' (normalisée: '{old_room_normalise}') non trouvée dans le catalogue")
-                st.info(f"Salles disponibles (normalisées): {list(cap_lookup_normalise.keys())[:5]}...")
+                debug_messages.append(f"⚠️ Salle '{old_room}' (normalisée: '{old_room_normalise}') non trouvée dans le catalogue")
             elif old_room_normalise:
                 capacite_trouvee = cap_lookup_normalise.get(old_room_normalise, 'N/A')
-                st.success(f"✅ Salle '{old_room}' (normalisée: '{old_room_normalise}') trouvée avec capacité: {capacite_trouvee}")
+                debug_messages.append(f"✅ Salle '{old_room}' (normalisée: '{old_room_normalise}') trouvée avec capacité: {capacite_trouvee}")
                 
                 # Debug: Afficher toutes les entrées pour cette salle dans le catalogue
                 salles_correspondantes = df_salles[df_salles[COL_NOM_SALLE].str.contains(old_room, case=False, na=False)]
                 if len(salles_correspondantes) > 1:
-                    st.warning(f"⚠️ Plusieurs entrées trouvées pour '{old_room}': {salles_correspondantes[[COL_NOM_SALLE, COL_CAPACITE]].to_dict('records')}")
+                    debug_messages.append(f"⚠️ Plusieurs entrées trouvées pour '{old_room}': {salles_correspondantes[[COL_NOM_SALLE, COL_CAPACITE]].to_dict('records')}")
             
             cap_old = cap_lookup_normalise.get(old_room_normalise, pd.NA)
             
@@ -396,6 +398,12 @@ def optimiser_glouton(df_resa: pd.DataFrame, df_salles: pd.DataFrame,
                 result_row[COL_NOM_ANCIENNE_SALLE] = old_room
             results.append(result_row)
         
+        # Afficher tous les messages de débogage dans un expander à la fin
+        if debug_messages:
+            with st.expander("🔍 Messages de débogage - Correspondance des salles", expanded=False):
+                for msg in debug_messages:
+                    st.write(msg)
+        
         df_final = pd.concat([
             pd.DataFrame(results), 
             df_invalid
@@ -428,35 +436,73 @@ def optimiser_glouton(df_resa: pd.DataFrame, df_salles: pd.DataFrame,
 # ── ALGORITHME GÉNÉTIQUE ────────────────────────────────────────────
 def optimiser_genetique(df_resa: pd.DataFrame, df_salles: pd.DataFrame,
                        seuil_bon: float, seuil_bas: float,
-                       generations: int = 100, population_size: int = 50,
-                       mutation_rate: float = 0.1) -> Optional[pd.DataFrame]:
-    """Algorithme génétique pour l'optimisation globale avec gestion des doublons."""
+                       generations: int = 50, population_size: int = 30,
+                       mutation_rate: float = 0.15) -> Optional[pd.DataFrame]:
+    """Algorithme génétique optimisé pour l'optimisation globale."""
     try:
         salles = list(df_salles[COL_NOM_SALLE])
         cap_lookup = dict(zip(df_salles[COL_NOM_SALLE], df_salles[COL_CAPACITE]))
-        # Créer un lookup normalisé pour la correspondance des salles
-        cap_lookup_normalise = {normaliser_nom_salle(nom): cap for nom, cap in cap_lookup.items()}
         
         df = detecter_doublons(df_resa)
-        df = df[df[COL_DUPLICATA] == False].copy()  # Exclure les doublons
-        
+        df = df[df[COL_DUPLICATA] == False].copy()
         df[COL_NB_INSCRITS] = pd.to_numeric(df[COL_NB_INSCRITS], errors="coerce")
         
         n_resa = len(df)
         
+        # OPTIMISATION 1: Pré-calculer les salles adéquates pour chaque réservation
+        salles_adequates_cache = {}
+        for idx, row in df.iterrows():
+            inscrits = row[COL_NB_INSCRITS]
+            if not pd.isna(inscrits) and inscrits > 0:
+                salles_adequates_cache[idx] = [s for s in salles if cap_lookup[s] >= inscrits]
+            else:
+                salles_adequates_cache[idx] = []
+        
         def generer_individu():
             individu = []
-            for _, row in df.iterrows():
+            for idx, row in df.iterrows():
                 inscrits = row[COL_NB_INSCRITS]
                 if pd.isna(inscrits) or inscrits <= 0:
                     individu.append(None)
                 else:
-                    salles_adequates = [s for s in salles if cap_lookup[s] >= inscrits]
+                    salles_adequates = salles_adequates_cache.get(idx, [])
                     if salles_adequates:
                         individu.append(random.choice(salles_adequates))
                     else:
                         individu.append(None)
             return individu
+        
+        # OPTIMISATION 2: Fonction de fitness optimisée avec cache
+        @st.cache_data
+        def calculer_score_fitness_optimise(individu: List[str]) -> float:
+            score = 0
+            penalite = 0
+            
+            for idx, salle in enumerate(individu):
+                if salle is None or salle == "Aucune salle adaptée":
+                    penalite += 100
+                    continue
+                    
+                inscrits = df.iloc[idx][COL_NB_INSCRITS]
+                if pd.isna(inscrits) or inscrits <= 0:
+                    penalite += 50
+                    continue
+                    
+                cap = cap_lookup.get(salle, 0)
+                if cap == 0 or inscrits > cap:
+                    penalite += 75
+                    continue
+                    
+                taux = inscrits / cap
+                
+                if seuil_bas <= taux <= seuil_bon:
+                    score += taux * 100
+                elif taux > seuil_bon:
+                    score += seuil_bon * 100 - (taux - seuil_bon) * 50
+                else:
+                    score += taux * 50
+            
+            return score - penalite
         
         def croiser(parent1, parent2):
             point_coupure = random.randint(1, n_resa - 1)
@@ -468,43 +514,82 @@ def optimiser_genetique(df_resa: pd.DataFrame, df_salles: pd.DataFrame,
                 if random.random() < mutation_rate:
                     inscrits = df.iloc[i][COL_NB_INSCRITS]
                     if not pd.isna(inscrits) and inscrits > 0:
-                        salles_adequates = [s for s in salles if cap_lookup[s] >= inscrits]
+                        salles_adequates = salles_adequates_cache.get(i, [])
                         if salles_adequates:
                             individu_mute[i] = random.choice(salles_adequates)
             return individu_mute
         
-        population = [generer_individu() for _ in range(population_size)]
+        # OPTIMISATION 3: Population initiale plus intelligente
+        population = []
+        for _ in range(population_size):
+            individu = generer_individu()
+            population.append(individu)
+        
+        # OPTIMISATION 4: Convergence plus rapide
+        meilleur_score_global = float('-inf')
+        generations_sans_amelioration = 0
+        max_generations_sans_amelioration = 10
         
         progress_bar = st.progress(0)
+        status_text = st.empty()
+        
         for gen in range(generations):
-            scores = [calculer_score_fitness(ind, df, cap_lookup, seuil_bon, seuil_bas) 
-                     for ind in population]
+            # Calcul des scores avec la fonction optimisée
+            scores = [calculer_score_fitness_optimise(ind) for ind in population]
             
             couples_score_pop = list(zip(scores, population))
             couples_score_pop.sort(key=lambda x: x[0], reverse=True)
             
-            elite_size = population_size // 5
+            # Vérifier la convergence
+            meilleur_score_gen = max(scores)
+            if meilleur_score_gen > meilleur_score_global:
+                meilleur_score_global = meilleur_score_gen
+                generations_sans_amelioration = 0
+            else:
+                generations_sans_amelioration += 1
+            
+            # Arrêt prématuré si convergence
+            if generations_sans_amelioration >= max_generations_sans_amelioration:
+                status_text.info(f"🔄 Convergence atteinte après {gen + 1} générations")
+                break
+            
+            status_text.info(f"Génération {gen + 1}/{generations} - Meilleur score: {meilleur_score_global:.2f}")
+            
+            elite_size = max(1, population_size // 4)  # Plus d'élite
             nouvelle_pop = [ind for _, ind in couples_score_pop[:elite_size]]
             
             while len(nouvelle_pop) < population_size:
-                parents = random.sample(couples_score_pop[:population_size//2], 2)
-                parent1, parent2 = parents[0][1], parents[1][1]
+                # Sélection par tournoi plus efficace
+                parents = []
+                for _ in range(2):
+                    tournoi = random.sample(couples_score_pop[:population_size//2], 3)
+                    parent = max(tournoi, key=lambda x: x[0])[1]
+                    parents.append(parent)
                 
-                enfant = croiser(parent1, parent2)
+                enfant = croiser(parents[0], parents[1])
                 enfant = muter(enfant)
                 nouvelle_pop.append(enfant)
             
             population = nouvelle_pop
             progress_bar.progress((gen + 1) / generations)
         
-        scores_finaux = [calculer_score_fitness(ind, df, cap_lookup, seuil_bon, seuil_bas) 
-                        for ind in population]
+        scores_finaux = [calculer_score_fitness_optimise(ind) for ind in population]
         meilleur_individu = population[scores_finaux.index(max(scores_finaux))]
         
         results = []
+        debug_messages_genetic = []
+        
         for i, salle in enumerate(meilleur_individu):
             row = df.iloc[i].to_dict()
             inscrits = row[COL_NB_INSCRITS]
+            
+            # Récupérer la salle actuellement assignée (ancienne salle) pour l'algorithme génétique
+            old_room_genetic = str(row.get(COL_NOM_ANCIENNE_SALLE, "")).strip()
+            old_room_genetic_normalise = normaliser_nom_salle(old_room_genetic)
+            
+            # Collecter les messages de débogage
+            if old_room_genetic_normalise and old_room_genetic_normalise not in cap_lookup:
+                debug_messages_genetic.append(f"⚠️ Algo génétique: Salle '{old_room_genetic}' (normalisée: '{old_room_genetic_normalise}') non trouvée")
             
             if salle is None or pd.isna(inscrits) or inscrits <= 0:
                 salle_finale = "Aucune salle adaptée"
@@ -512,33 +597,20 @@ def optimiser_genetique(df_resa: pd.DataFrame, df_salles: pd.DataFrame,
                 taux = pd.NA
                 raison = "Non attribuée"
             else:
-                cap = cap_lookup.get(salle, 0)
-                if cap == 0 or inscrits > cap:
-                    salle_finale = "Aucune salle adaptée"
-                    cap = pd.NA
-                    taux = pd.NA
-                    raison = "Capacité insuffisante"
+                salle_finale = salle
+                taux = inscrits / cap
+                if taux >= seuil_bon:
+                    raison = f"Taux optimal ({taux:.0%})"
+                elif taux <= seuil_bas:
+                    raison = f"Sous-utilisé ({taux:.0%})"
                 else:
-                    salle_finale = salle
-                    taux = inscrits / cap
-                    if taux >= seuil_bon:
-                        raison = f"Taux optimal ({taux:.0%})"
-                    elif taux <= seuil_bas:
-                        raison = f"Sous-utilisé ({taux:.0%})"
-                    else:
-                        raison = pd.NA
-            
-            # Récupérer la salle actuellement assignée (ancienne salle) pour l'algorithme génétique
-            old_room_genetic = str(row.get(COL_NOM_ANCIENNE_SALLE, "")).strip()
-            old_room_genetic_normalise = normaliser_nom_salle(old_room_genetic)
-            if old_room_genetic_normalise and old_room_genetic_normalise not in cap_lookup_normalise:
-                st.warning(f"⚠️ Algo génétique: Salle '{old_room_genetic}' (normalisée: '{old_room_genetic_normalise}') non trouvée")
+                    raison = pd.NA
             
             row.update({
                 COL_SALLE_OPTIM: salle_finale,
                 COL_CAPACITE: cap,
                 COL_TAUX_OCCUP: taux,
-                COL_CAPACITE_OLD: cap_lookup_normalise.get(old_room_genetic_normalise, pd.NA),
+                COL_CAPACITE_OLD: cap_lookup.get(old_room_genetic_normalise, pd.NA),
                 COL_RAISON_NA: raison
             })
             
@@ -551,6 +623,13 @@ def optimiser_genetique(df_resa: pd.DataFrame, df_salles: pd.DataFrame,
         df_final = pd.DataFrame(results)
         df_invalid = df_resa[df_resa[COL_DUPLICATA] == True].copy()
         df_final = pd.concat([df_final, df_invalid], ignore_index=True)
+        
+        # Afficher les messages de débogage pour l'algorithme génétique
+        if debug_messages_genetic:
+            with st.expander("🔍 Messages de débogage - Algorithme génétique", expanded=False):
+                for msg in debug_messages_genetic:
+                    st.write(msg)
+        
         return df_final
         
     except Exception as e:
@@ -705,9 +784,9 @@ def main():
         )
         
         if algo_choisi == t["algo_genetique"]:
-            generations = st.slider(t["generations"], 50, 300, 100, 25)
-            population = st.slider(t["population"], 20, 100, 50, 10) 
-            mutation = st.slider(t["mutation"], 5, 30, 10, 5) / 100
+            generations = st.slider(t["generations"], 20, 100, 50, 10)
+            population = st.slider(t["population"], 10, 50, 30, 5)
+            mutation = st.slider(t["mutation"], 5, 30, 15, 5) / 100
     
     st.subheader("📤 Import des données")
     fichier_resa = st.file_uploader(t["upload"], type="xlsx")

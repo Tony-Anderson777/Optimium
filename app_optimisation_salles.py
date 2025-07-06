@@ -305,7 +305,7 @@ def optimiser_glouton(df_resa: pd.DataFrame, df_salles: pd.DataFrame,
             (df[COL_FIN] > df[COL_DEB]) &
             df[COL_NB_INSCRITS].notna() & 
             (df[COL_NB_INSCRITS] > 0) &
-            (df[COL_DUPLICATA] == False)  # Exclure les doublons
+            (df[COL_DUPLICATA] == False)
         )
         
         df_valid = (
@@ -398,16 +398,39 @@ def optimiser_glouton(df_resa: pd.DataFrame, df_salles: pd.DataFrame,
                 result_row[COL_NOM_ANCIENNE_SALLE] = old_room
             results.append(result_row)
         
+        # Traitement des réservations invalides (y compris celles avec 0 inscrits)
+        for _, row in df_invalid.iterrows():
+            inscrits = row[COL_NB_INSCRITS]
+            old_room = str(row.get(COL_NOM_ANCIENNE_SALLE, "")).strip()
+            old_room_normalise = normaliser_nom_salle(old_room)
+            
+            if pd.isna(inscrits) or inscrits <= 0:
+                raison = "Non prioritaire"
+            else:
+                raison = "Données invalides"
+            
+            cap_old = cap_lookup_normalise.get(old_room_normalise, pd.NA)
+            
+            result_row = row.to_dict()
+            result_row.update({
+                COL_SALLE_OPTIM: "Aucune salle adaptée",
+                COL_CAPACITE: pd.NA,
+                COL_TAUX_OCCUP: pd.NA,
+                COL_CAPACITE_OLD: cap_old,
+                COL_RAISON_NA: raison
+            })
+            
+            if COL_NOM_ANCIENNE_SALLE not in result_row:
+                result_row[COL_NOM_ANCIENNE_SALLE] = old_room
+            results.append(result_row)
+        
         # Afficher tous les messages de débogage dans un expander à la fin
         if debug_messages:
             with st.expander("🔍 Messages de débogage - Correspondance des salles", expanded=False):
                 for msg in debug_messages:
                     st.write(msg)
         
-        df_final = pd.concat([
-            pd.DataFrame(results), 
-            df_invalid
-        ], ignore_index=True)
+        df_final = pd.DataFrame(results)
         
         df_final.drop(columns=[COL_DEB, COL_FIN], 
                      inplace=True, errors="ignore")
@@ -472,8 +495,7 @@ def optimiser_genetique(df_resa: pd.DataFrame, df_salles: pd.DataFrame,
                         individu.append(None)
             return individu
         
-        # OPTIMISATION 2: Fonction de fitness optimisée avec cache
-        @st.cache_data
+        # OPTIMISATION 2: Fonction de fitness optimisée SANS cache (correction)
         def calculer_score_fitness_optimise(individu: List[str]) -> float:
             score = 0
             penalite = 0
@@ -484,23 +506,28 @@ def optimiser_genetique(df_resa: pd.DataFrame, df_salles: pd.DataFrame,
                     continue
                     
                 inscrits = df.iloc[idx][COL_NB_INSCRITS]
-                if pd.isna(inscrits) or inscrits <= 0:
+                # CORRECTION: Gestion explicite des valeurs NA
+                if pd.isna(inscrits) or (not pd.isna(inscrits) and inscrits <= 0):
                     penalite += 50
                     continue
                     
                 cap = cap_lookup.get(salle, 0)
-                if cap == 0 or inscrits > cap:
+                if cap == 0 or (not pd.isna(inscrits) and inscrits > cap):
                     penalite += 75
                     continue
                     
-                taux = inscrits / cap
-                
-                if seuil_bas <= taux <= seuil_bon:
-                    score += taux * 100
-                elif taux > seuil_bon:
-                    score += seuil_bon * 100 - (taux - seuil_bon) * 50
+                # CORRECTION: S'assurer que inscrits n'est pas NA avant le calcul
+                if not pd.isna(inscrits):
+                    taux = inscrits / cap
+                    
+                    if seuil_bas <= taux <= seuil_bon:
+                        score += taux * 100
+                    elif taux > seuil_bon:
+                        score += seuil_bon * 100 - (taux - seuil_bon) * 50
+                    else:
+                        score += taux * 50
                 else:
-                    score += taux * 50
+                    penalite += 50
             
             return score - penalite
         
@@ -591,18 +618,27 @@ def optimiser_genetique(df_resa: pd.DataFrame, df_salles: pd.DataFrame,
             if old_room_genetic_normalise and old_room_genetic_normalise not in cap_lookup:
                 debug_messages_genetic.append(f"⚠️ Algo génétique: Salle '{old_room_genetic}' (normalisée: '{old_room_genetic_normalise}') non trouvée")
             
-            if salle is None or pd.isna(inscrits) or inscrits <= 0:
+            if pd.isna(inscrits) or inscrits <= 0:
+                salle_finale = "Aucune salle adaptée"
+                cap = pd.NA
+                taux = pd.NA
+                raison = "Non prioritaire"
+            elif salle is None:
                 salle_finale = "Aucune salle adaptée"
                 cap = pd.NA
                 taux = pd.NA
                 raison = "Non attribuée"
             else:
                 salle_finale = salle
-                taux = inscrits / cap
-                if taux >= seuil_bon:
-                    raison = f"Taux optimal ({taux:.0%})"
-                elif taux <= seuil_bas:
-                    raison = f"Sous-utilisé ({taux:.0%})"
+                cap = cap_lookup.get(salle, 0)
+                taux = inscrits / cap if cap > 0 else pd.NA
+                if not pd.isna(taux):
+                    if taux >= seuil_bon:
+                        raison = f"Taux optimal ({taux:.0%})"
+                    elif taux <= seuil_bas:
+                        raison = f"Sous-utilisé ({taux:.0%})"
+                    else:
+                        raison = pd.NA
                 else:
                     raison = pd.NA
             
@@ -620,6 +656,7 @@ def optimiser_genetique(df_resa: pd.DataFrame, df_salles: pd.DataFrame,
             results.append(row)
         
         progress_bar.empty()
+        status_text.empty()
         df_final = pd.DataFrame(results)
         df_invalid = df_resa[df_resa[COL_DUPLICATA] == True].copy()
         df_final = pd.concat([df_final, df_invalid], ignore_index=True)

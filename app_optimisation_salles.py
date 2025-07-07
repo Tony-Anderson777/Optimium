@@ -146,8 +146,8 @@ def normaliser_nom_salle(nom: str) -> str:
     nom_clean = str(nom).strip().upper()
     # Supprimer les caractères spéciaux et espaces multiples
     import re
-    nom_clean = re.sub(r'[^\w\s]', '', nom_clean)
-    nom_clean = re.sub(r'\s+', ' ', nom_clean).strip()
+    nom_clean = re.sub(r'[^\w\s]', '', nom_clean) # Supprime les caractères spéciaux
+    nom_clean = re.sub(r'\s+', ' ', nom_clean).strip() #supprime les espaces multiples
     return nom_clean
 
 def salle_libre(planning: List[Tuple], start: datetime, end: datetime, buffer_min: int = 0) -> bool:
@@ -197,6 +197,25 @@ def calculer_score_fitness(individu: List[str], df_resa: pd.DataFrame,
             score += seuil_bon * 100 - (taux - seuil_bon) * 50
         else:
             score += taux * 50
+    
+    # 1. Construire un dictionnaire {salle: [(start, end), ...]}
+    salle_to_creneaux = {}
+    for idx, salle in enumerate(individu):
+        if salle is not None and salle != "Aucune salle adaptée":
+            start = df_resa.iloc[idx][COL_DEB]
+            end = df_resa.iloc[idx][COL_FIN]
+            if pd.notna(start) and pd.notna(end):
+                salle_to_creneaux.setdefault(salle, []).append((start, end))
+
+    # 2. Pour chaque salle, vérifier les conflits de créneaux
+    for creneaux in salle_to_creneaux.values():
+        # Trier les créneaux par heure de début
+        creneaux_sorted = sorted(creneaux, key=lambda x: x[0])
+        for i in range(1, len(creneaux_sorted)):
+            prev_end = creneaux_sorted[i-1][1]
+            curr_start = creneaux_sorted[i][0]
+            if curr_start < prev_end:
+                penalite += 200  # Pénalité forte pour chaque conflit détecté
     
     return score - penalite
 
@@ -470,6 +489,15 @@ def optimiser_genetique(df_resa: pd.DataFrame, df_salles: pd.DataFrame,
         df = df[df[COL_DUPLICATA] == False].copy()
         df[COL_NB_INSCRITS] = pd.to_numeric(df[COL_NB_INSCRITS], errors="coerce")
         
+        df[COL_DEB] = pd.to_datetime(
+            df[COL_DATE].astype(str) + " " + df[COL_HEURE_DEBUT].astype(str),
+            dayfirst=True, errors="coerce"
+        )
+        df[COL_FIN] = pd.to_datetime(
+            df[COL_DATE].astype(str) + " " + df[COL_HEURE_FIN].astype(str),
+            dayfirst=True, errors="coerce"
+        )
+        
         n_resa = len(df)
         
         # OPTIMISATION 1: Pré-calculer les salles adéquates pour chaque réservation
@@ -528,6 +556,25 @@ def optimiser_genetique(df_resa: pd.DataFrame, df_salles: pd.DataFrame,
                         score += taux * 50
                 else:
                     penalite += 50
+            
+            # 1. Construire un dictionnaire {salle: [(start, end), ...]}
+            salle_to_creneaux = {}
+            for idx, salle in enumerate(individu):
+                if salle is not None and salle != "Aucune salle adaptée":
+                    start = df.iloc[idx][COL_DEB]
+                    end = df.iloc[idx][COL_FIN]
+                    if pd.notna(start) and pd.notna(end):
+                        salle_to_creneaux.setdefault(salle, []).append((start, end))
+
+            # 2. Pour chaque salle, vérifier les conflits de créneaux
+            for creneaux in salle_to_creneaux.values():
+                # Trier les créneaux par heure de début
+                creneaux_sorted = sorted(creneaux, key=lambda x: x[0])
+                for i in range(1, len(creneaux_sorted)):
+                    prev_end = creneaux_sorted[i-1][1]
+                    curr_start = creneaux_sorted[i][0]
+                    if curr_start < prev_end:
+                        penalite += 200  # Pénalité forte pour chaque conflit détecté
             
             return score - penalite
         

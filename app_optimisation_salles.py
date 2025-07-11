@@ -91,7 +91,7 @@ LANGS = {
         "non_attrib": "⚠️ {n} réservations non attribuées",
         "reset": "🔄 Réinitialiser",
         "langue": "🌐 Langue",
-        "params": "⚙️ Paramètres",
+        "params": "Données sur les salles",
         "stats": "📈 Statistiques",
         "erreur_salles": "❌ Impossible de charger le fichier des salles",
         "erreur_optim": "❌ Erreur lors de l'optimisation",
@@ -175,21 +175,21 @@ def calculer_score_fitness(individu: List[str], df_resa: pd.DataFrame,
     penalite = 0
     
     for idx, salle in enumerate(individu):
-        if salle is None or salle == "Aucune salle adaptée":
+        if salle is None or salle == "Aucune salle adaptée": #Si aucune salle n’est attribuée, on ajoute une grosse pénalité
             penalite += 100
             continue
             
-        inscrits = df_resa.iloc[idx][COL_NB_INSCRITS]
+        inscrits = df_resa.iloc[idx][COL_NB_INSCRITS] #Si le nombre d’inscrits est manquant ou nul, on pénalise.
         if pd.isna(inscrits) or inscrits <= 0:
             penalite += 50
             continue
             
-        cap = cap_lookup.get(salle, 0)
+        cap = cap_lookup.get(salle, 0) #Si la salle n’existe pas ou n’a pas assez de capacité, on pénalise.
         if cap == 0 or inscrits > cap:
             penalite += 75
             continue
             
-        taux = inscrits / cap
+        taux = inscrits / cap # On calcule le taux d’occupation de la salle pour cette réservation.
         
         if seuil_bas <= taux <= seuil_bon:
             score += taux * 100
@@ -224,16 +224,17 @@ def detecter_doublons(df_resa: pd.DataFrame) -> pd.DataFrame:
     """Identifie les réservations exactement identiques (même CodeAnalytique, Date, Heure, Inscrits)."""
     df = df_resa.copy()
     
-    df[COL_DUPLICATA] = False
+    df[COL_DUPLICATA] = False # ajout d'une colonne pour marquer les doublons
     
     # Regrouper par CodeAnalytique, Date, Heure de début, Heure de fin et Nombre d'inscrits
     grouped = df.groupby([COL_CODE_ANALYTIQUE, COL_DATE, COL_HEURE_DEBUT, COL_HEURE_FIN, COL_NB_INSCRITS])
     
+    #detection des doublons
     for (code, date, debut, fin, inscrits), group in grouped:
-        if len(group) > 1:  # Plus d'une réservation identique
+        if len(group) > 1:  # si un group contient plus d'une réservation identique
             # Marquer toutes les doublons sauf la première
             for i, (idx, row) in enumerate(group.iterrows()):
-                if i > 0:  # Garder la première, marquer les autres comme doublons
+                if i > 0:  # Garder la première, marquer les autres comme doublons (on garde la première réservation)
                     df.loc[idx, COL_DUPLICATA] = True
     
     return df
@@ -248,34 +249,50 @@ def corriger_inscrits(df_resa: pd.DataFrame) -> int:
     return df_resa.groupby(COL_CODE_ANALYTIQUE)[COL_NB_INSCRITS].max().sum()
 
 # ── CHARGEMENT DES SALLES ───────────────────────────────────────────
-@st.cache_data
+@st.cache_data # permet de mémoriser le résultat de la fonction pour ne pas le recalculer à chaque fois
 def charger_salles(path: str) -> Optional[pd.DataFrame]:
     """Charge et nettoie le catalogue des salles."""
     try:
-        if not os.path.exists(path):
+        if not os.path.exists(path): # si le fichier n'existe pas, on affiche un message d'erreur
             st.error(f"❌ Fichier salles introuvable : {path}")
             return None
             
-        df = pd.read_excel(path)
+        df = pd.read_excel(path) # on charge le fichier excel dans un dataframe pandas
         logger.info(f"Salles chargées : {len(df)} lignes")
         
-        df[COL_CAPACITE] = pd.to_numeric(df[COL_CAPACITE], errors="coerce")
-        df = df.dropna(subset=[COL_NOM_SALLE, COL_CAPACITE])
-        df[COL_NOM_SALLE] = df[COL_NOM_SALLE].astype(str).str.strip()
+        df[COL_CAPACITE] = pd.to_numeric(df[COL_CAPACITE], errors="coerce") # on convertit la colonne CAPACITE en nombre
+        df = df.dropna(subset=[COL_NOM_SALLE, COL_CAPACITE]) # on supprime les lignes avec des valeurs manquantes dans les colonnes NOM_SALLE et CAPACITE
+        df[COL_NOM_SALLE] = df[COL_NOM_SALLE].astype(str).str.strip() # on convertit la colonne NOM_SALLE en chaîne de caractères et on supprime les espaces
         
-        if (df[COL_CAPACITE] <= 0).any():
+        if (df[COL_CAPACITE] <= 0).any(): # si la colonne CAPACITE contient des valeurs nulles ou négatives, on affiche un message d'avertissement
             st.warning("⚠️ Capacités négatives détectées et supprimées")
             df = df[df[COL_CAPACITE] > 0]
         
         # Gérer les doublons en gardant la capacité la plus élevée
         df = df.sort_values(COL_CAPACITE, ascending=False).drop_duplicates(subset=[COL_NOM_SALLE], keep='first')
-        
+        #log des salles chargées après nettoyage et des capacités uniques
         logger.info(f"Salles chargées après nettoyage : {len(df)} lignes")
         logger.info(f"Capacités uniques : {df[COL_CAPACITE].unique()}")
         
+        # Vérification des capacités incohérentes pour une même salle (après normalisation)
+        df['NomSalleNormalise'] = df[COL_NOM_SALLE].apply(normaliser_nom_salle)
+        salles_incoherentes = (
+            df.groupby('NomSalleNormalise')[COL_CAPACITE]
+            .nunique()
+            .reset_index()
+        )
+        salles_incoherentes = salles_incoherentes[salles_incoherentes[COL_CAPACITE] > 1]
+        if not salles_incoherentes.empty:
+            details = []
+            for nom_norm in salles_incoherentes['NomSalleNormalise']:
+                capacites = df[df['NomSalleNormalise'] == nom_norm][COL_CAPACITE].unique()
+                noms_originaux = df[df['NomSalleNormalise'] == nom_norm][COL_NOM_SALLE].unique()
+                details.append(f"Salle(s) : {noms_originaux} → capacités trouvées : {capacites}")
+            st.warning("⚠️ Salles avec capacités incohérentes (vérifiez le catalogue) :\n" + "\n".join(details))
+        
         return df.sort_values(COL_CAPACITE).reset_index(drop=True)
         
-    except Exception as e:
+    except Exception as e: # si une erreur survient, on affiche un message d'erreur
         logger.error(f"Erreur chargement salles : {e}")
         st.error(f"❌ Erreur chargement salles : {e}")
         return None
@@ -295,11 +312,6 @@ def optimiser_glouton(df_resa: pd.DataFrame, df_salles: pd.DataFrame,
         if not salles_dupliquees.empty:
             st.warning(f"⚠️ Salles dupliquées dans le catalogue: {salles_dupliquees[COL_NOM_SALLE].tolist()}")
             st.dataframe(salles_dupliquees[[COL_NOM_SALLE, COL_CAPACITE]])
-        
-        # Debug: Afficher toutes les capacités pour S158
-        salles_s158 = df_salles[df_salles[COL_NOM_SALLE].str.contains('S158', case=False, na=False)]
-        if not salles_s158.empty:
-            st.info(f"🔍 Capacités trouvées pour S158: {salles_s158[[COL_NOM_SALLE, COL_CAPACITE]].to_dict('records')}")
         
         df = detecter_doublons(df_resa)
         
@@ -392,11 +404,14 @@ def optimiser_glouton(df_resa: pd.DataFrame, df_salles: pd.DataFrame,
                 else:
                     raison = "Erreur allocation"
                 best_room = "Aucune salle adaptée"
-                capacite_assignee = pd.NA
+                capacite_assignee = 0  # Mettre 0 au lieu de pd.NA
                 best_ratio = pd.NA
             else:
                 insort(plannings[best_room], (start, end))
-                capacite_assignee = cap_lookup[best_room]
+                # Utiliser la version normalisée pour retrouver la capacité
+                capacite_assignee = cap_lookup_normalise.get(normaliser_nom_salle(best_room), 0)
+                if capacite_assignee == 0 and best_room != "Aucune salle adaptée":
+                    st.warning(f"⚠️ Capacité non trouvée pour la salle '{best_room}' (vérifier le catalogue et la normalisation)")
                 
                 if best_ratio >= seuil_bon:
                     raison = f"Taux optimal ({best_ratio:.0%})"
@@ -667,17 +682,22 @@ def optimiser_genetique(df_resa: pd.DataFrame, df_salles: pd.DataFrame,
             
             if pd.isna(inscrits) or inscrits <= 0:
                 salle_finale = "Aucune salle adaptée"
-                cap = pd.NA
+                cap = 0  # Mettre 0 au lieu de pd.NA
                 taux = pd.NA
                 raison = "Non prioritaire"
             elif salle is None:
                 salle_finale = "Aucune salle adaptée"
-                cap = pd.NA
+                cap = 0  # Mettre 0 au lieu de pd.NA
                 taux = pd.NA
                 raison = "Non attribuée"
             else:
                 salle_finale = salle
+                # Utiliser la version normalisée pour retrouver la capacité
                 cap = cap_lookup.get(salle, 0)
+                if cap == 0 and salle_finale != "Aucune salle adaptée":
+                    cap = cap_lookup.get(normaliser_nom_salle(salle), 0)
+                    if cap == 0:
+                        st.warning(f"⚠️ Capacité non trouvée pour la salle '{salle}' (vérifier le catalogue et la normalisation)")
                 taux = inscrits / cap if cap > 0 else pd.NA
                 if not pd.isna(taux):
                     if taux >= seuil_bon:
@@ -833,9 +853,6 @@ def main():
     with st.sidebar:
         st.success(t["salles_chargees"].format(n=len(df_salles)))
         
-        # Debug: Afficher les salles du catalogue
-        st.info(f"🏠 Salles du catalogue: {list(df_salles[COL_NOM_SALLE])}")
-        
         with st.expander("📋 Salles disponibles"):
             st.dataframe(df_salles, hide_index=True, use_container_width=True)
     
@@ -898,7 +915,10 @@ def main():
     # Créer la colonne NomAncienneSalle à partir de NomSalle
     if COL_SALLE_OLD in df_resa.columns:
         df_resa[COL_NOM_ANCIENNE_SALLE] = df_resa[COL_SALLE_OLD]
-    
+        # Considérer les réservations dont le NomSalle commence par W1 ou SER comme sans salle
+        mask_w1_ser = df_resa[COL_NOM_ANCIENNE_SALLE].astype(str).str.upper().str.startswith(('W1', 'SER'))
+        df_resa.loc[mask_w1_ser, COL_NOM_ANCIENNE_SALLE] = ''
+
     # Debug: Afficher les salles dans le fichier de réservations
     if COL_NOM_ANCIENNE_SALLE in df_resa.columns:
         salles_resa = df_resa[COL_NOM_ANCIENNE_SALLE].unique()

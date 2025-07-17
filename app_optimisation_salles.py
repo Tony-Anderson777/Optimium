@@ -381,11 +381,12 @@ def optimiser_glouton(df_resa: pd.DataFrame, df_salles: pd.DataFrame,
             best_ratio = -1.0
             found_adequate = False
             found_busy = False
-            
+            salle_conflit = None
+            ratio_conflit = -1.0
+
             for _, salle_row in df_salles.sort_values(COL_CAPACITE).iterrows():
                 salle_nom = salle_row[COL_NOM_SALLE]
                 cap = salle_row[COL_CAPACITE]
-                
                 if cap >= inscrits:
                     found_adequate = True
                     if salle_libre(plannings[salle_nom], start, end, buffer_min):
@@ -393,26 +394,49 @@ def optimiser_glouton(df_resa: pd.DataFrame, df_salles: pd.DataFrame,
                         if ratio > best_ratio:
                             best_room, best_ratio = salle_nom, ratio
                     else:
+                        # Garder la meilleure salle en conflit si aucune n'est libre
+                        ratio = inscrits / cap
+                        if ratio > ratio_conflit:
+                            salle_conflit, ratio_conflit = salle_nom, ratio
                         found_busy = True
-            
+
             raison = pd.NA
             if best_room is None:
-                if not found_adequate:
+                if salle_conflit is not None:
+                    # Forcer l'attribution à la salle en conflit la plus adaptée
+                    best_room = salle_conflit
+                    best_ratio = ratio_conflit
+                    raison = "Conflit horaire (forcé)"
+                elif old_room_normalise in cap_lookup_normalise:
+                    # En dernier recours, attribuer la salle d'origine
+                    best_room = old_room
+                    best_ratio = inscrits / cap_lookup_normalise[old_room_normalise]
+                    raison = "Salle d'origine (forcé)"
+                elif not found_adequate:
                     raison = "Capacité insuffisante"
-                elif found_busy:
-                    raison = "Conflit horaire"
+                    best_room = "Aucune salle adaptée"
+                    best_ratio = pd.NA
                 else:
                     raison = "Erreur allocation"
-                best_room = "Aucune salle adaptée"
-                capacite_assignee = 0  # Mettre 0 au lieu de pd.NA
-                best_ratio = pd.NA
+                    best_room = "Aucune salle adaptée"
+                    best_ratio = pd.NA
+                # Capacité assignée
+                capacite_assignee = df_salles.loc[
+                    df_salles[COL_NOM_SALLE] == best_room, COL_CAPACITE
+                ].values
+                if len(capacite_assignee) > 0:
+                    capacite_assignee = capacite_assignee[0]
+                else:
+                    capacite_assignee = cap_lookup_normalise.get(normaliser_nom_salle(best_room), 0)
             else:
                 insort(plannings[best_room], (start, end))
-                # Utiliser la version normalisée pour retrouver la capacité
-                capacite_assignee = cap_lookup_normalise.get(normaliser_nom_salle(best_room), 0)
-                if capacite_assignee == 0 and best_room != "Aucune salle adaptée":
-                    st.warning(f"⚠️ Capacité non trouvée pour la salle '{best_room}' (vérifier le catalogue et la normalisation)")
-                
+                capacite_assignee = df_salles.loc[
+                    df_salles[COL_NOM_SALLE] == best_room, COL_CAPACITE
+                ].values
+                if len(capacite_assignee) > 0:
+                    capacite_assignee = capacite_assignee[0]
+                else:
+                    capacite_assignee = cap_lookup_normalise.get(normaliser_nom_salle(best_room), 0)
                 if best_ratio >= seuil_bon:
                     raison = f"Taux optimal ({best_ratio:.0%})"
                 elif best_ratio <= seuil_bas:

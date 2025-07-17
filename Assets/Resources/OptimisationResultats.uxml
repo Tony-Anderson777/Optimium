@@ -1,0 +1,9 @@
+<ui:UXML xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="../../../UIElementsSchema/UIElements.xsd">
+    <ui:VisualElement name="root" style="flex-grow: 1; background-color: rgb(50, 50, 50);">
+        <ui:Label text="Résultats de l'Optimisation" style="font-size: 24px; margin: 10px; color: white; -unity-text-align: middle-center;" />
+        
+        <ui:ScrollView name="ResultatsScroll" style="flex-grow: 1; margin: 10px; background-color: rgba(0,0,0,0.3); border-width: 1px; border-color: rgba(255,255,255,0.2);" />
+        
+        <ui:Button name="ExportExcelButton" text="Exporter en Excel" style="margin: 10px; padding: 10px; background-color: rgb(76, 175, 80); color: white; border-radius: 5px;" />
+    </ui:VisualElement>
+</ui:UXML> 

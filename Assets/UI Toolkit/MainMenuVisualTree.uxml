@@ -19,6 +19,9 @@
             <ui:Button text="Generate Map" name="GenerateMap" class="button" style="text-overflow: clip; -unity-font-style: bold; margin-top: 0; margin-right: 0; margin-bottom: 0; margin-left: 0; -unity-font-definition: url(&quot;project://database/Assets/Fonts/Allerta-Regular.ttf?fileID=12800000&amp;guid=cabc35fdcb01ba345b47ef75832c22d5&amp;type=3#Allerta-Regular&quot;);">
                 <ui:GroupBox name="Map" class="icon" style="height: 75px; width: 75px; background-image: url(&quot;project://database/Assets/2D_UI/map.png?fileID=2800000&amp;guid=d565caf422750dc4387f9a6b6380d2e7&amp;type=3#map&quot;); margin-left: 0%;" />
             </ui:Button>
+            <ui:Button text="Optimisation" name="OptimisationButton" class="button" style="text-overflow: clip; -unity-font-style: bold; margin-top: 10px; margin-right: 0; margin-bottom: 0; margin-left: 0; -unity-font-definition: url(&quot;project://database/Assets/Fonts/Allerta-Regular.ttf?fileID=12800000&amp;guid=cabc35fdcb01ba345b47ef75832c22d5&amp;type=3#Allerta-Regular&quot;); background-color: rgb(76, 175, 80); color: white;">
+                <ui:GroupBox name="OptimisationIcon" class="icon" style="height: 75px; width: 75px; background-color: rgba(255, 255, 255, 0.2); margin-left: 0%;" />
+            </ui:Button>
         </ui:GroupBox>
         <ui:GroupBox name="Instruct" style="background-image: none; left: auto; bottom: auto; width: 33%; margin-right: 0; margin-top: 0; margin-bottom: 0; margin-left: 0; padding-top: 0; padding-right: 0; padding-bottom: 0; padding-left: 0; align-items: center; align-self: auto; justify-content: center; font-size: 16px;">
             <ui:GroupBox name="ModeEmploi" style="height: 400px; width: 350px; padding-top: 5px; margin-top: 0; margin-right: 0; margin-bottom: 0; margin-left: 0; padding-bottom: 5px; padding-right: 5px; padding-left: 5px; background-color: rgba(125, 125, 125, 0.2); align-items: center; justify-content: flex-start;">

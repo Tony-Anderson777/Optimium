@@ -1,0 +1,45 @@
+:root {
+}
+
+.icon {
+    padding-left: 0;
+    margin-left: 5%;
+}
+
+.button {
+    left: auto;
+    right: auto;
+    position: relative;
+    align-items: center;
+    width: 100%;
+    border-top-left-radius: 60px;
+    border-top-right-radius: 60px;
+    border-bottom-right-radius: 60px;
+    border-bottom-left-radius: 60px;
+    height: 105px;
+    background-color: rgb(245, 245, 245);
+    font-size: 36px;
+    -unity-font-definition: url("../Fonts/Allerta-Regular.ttf");
+    -unity-font-style: bold;
+    -unity-text-align: middle-right;
+    padding-left: 10%;
+    flex-direction: row;
+    padding-right: 10%;
+    transition-duration: 0.35s;
+}
+
+.button:hover {
+    scale: 1.05 1.05;
+    border-top-width: 5px;
+    border-right-width: 5px;
+    border-bottom-width: 5px;
+    border-left-width: 5px;
+}
+
+.button:active {
+    border-left-color: rgb(91, 58, 220);
+    border-right-color: rgb(91, 58, 220);
+    border-top-color: rgb(91, 58, 220);
+    border-bottom-color: rgb(91, 58, 220);
+    background-color: rgba(91, 58, 220, 0);
+}

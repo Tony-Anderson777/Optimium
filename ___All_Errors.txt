@@ -1,0 +1,20 @@
+CorrelationId: bebf5e9f-e173-4f49-a466-ed88199624bd
+UTC DateTime: 07/21/2025 09:20:51
+
+The following files/folders have not been downloaded
+0. Optimium/.venv/Lib/site-packages/numpy/_core/records.pyi
+1. Optimium/.venv/Lib/site-packages/pandas/tests/io/sas/__pycache__
+2. Optimium/.venv/Lib/site-packages/pandas/tests/plotting
+3. Optimium/.venv/Lib/site-packages/pandas/tests/resample
+4. Optimium/.venv/Lib/site-packages/pandas/tests/reshape/__pycache__
+5. Optimium/.venv/Lib/site-packages/pandas/tests/reshape/merge
+6. Optimium/.venv/Lib/site-packages/pandas/tests/scalar/interval
+7. Optimium/.venv/Lib/site-packages/pandas/tests/scalar/timedelta
+8. Optimium/.venv/Lib/site-packages/pandas/tests/scalar/timestamp
+9. Optimium/.venv/Lib/site-packages/pandas/tests/series/__pycache__
+10. Optimium/.venv/Lib/site-packages/pandas/tests/series/methods/test_head_tail.py
+11. Optimium/.venv/Lib/site-packages/pip/_internal/commands
+12. Optimium/.venv/Lib/site-packages/pip/_internal/locations
+13. Optimium/.venv/Lib/site-packages/PyInstaller/hooks/pre_safe_import_module/hook-gi.repository.GtkChamplain.py
+14. Optimium/.venv/Lib/site-packages/setuptools/_vendor/wheel
+15. Optimium/.venv/Lib/site-packages/setuptools/_vendor/wheel-0.45.1.dist-info/entry_points.txt

@@ -14,3 +14,4 @@ script_path = os.path.join(dir_path, filename)
 # Lance Streamlit
 sys.argv = ["streamlit", "run", script_path, "--server.runOnSave", "false"]
 sys.exit(stcli.main())
+input("Appuyez sur Entrée pour quitter...")
